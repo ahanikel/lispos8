@@ -1,0 +1,1 @@
+minipro -p AT28C256 -w tmp/eater.bin
