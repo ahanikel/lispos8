@@ -26,11 +26,10 @@ NOTCR:
 
 ESCAPE:
         LDA     #$5C            ; "\".
-        JSR     ECHO            ; Output it.
+        JSR     CHROUT          ; Output it.
 
 GETLINE:
-        LDA     #$0D            ; Send CR
-        JSR     ECHO
+        JSR     SEND_NEWLINE
 
         LDY     #$01            ; Initialize text index.
 BACKSPACE:
@@ -41,7 +40,7 @@ NEXTCHAR:
         JSR     CHRIN           ; Load character. Bit 7 will be '0'.
         BCC     NEXTCHAR        ; Loop until character received.
         STA     IN,Y            ; Add to text buffer.
-        JSR     ECHO            ; Display character.
+        JSR     CHROUT          ; Display character.
         CMP     #$0D            ; CR?
         BNE     NOTCR           ; No.
 
@@ -65,7 +64,7 @@ NEXTITEM:
         CMP     #$3A            ; ":"?
         BEQ     SETSTOR         ; Yes, set STOR mode.
         CMP     #$52            ; "R"?
-        BEQ     RUN             ; Yes, run user program.
+        BEQ     RUNPROG         ; Yes, run user program.
         STX     L               ; $00 -> L.
         STX     H               ;    and H.
         STY     YSAV            ; Save Y for comparison.
@@ -109,7 +108,7 @@ NOTHEX:
 TONEXTITEM:
         JMP     NEXTITEM        ; Get next command item.
 
-RUN:
+RUNPROG:
         JMP     (XAML)          ; Run at current XAM index.
 
 NOTSTOR:
@@ -125,18 +124,17 @@ SETADR:
 
 NXTPRNT:
         BNE     PRDATA          ; NE means no address to print.
-        LDA     #$0D            ; CR.
-        JSR     ECHO            ; Output it.
+        JSR     SEND_NEWLINE
         LDA     XAMH            ; 'Examine index' high-order byte.
         JSR     PRBYTE          ; Output it in hex format.
         LDA     XAML            ; 'Examine index' low-order byte.
         JSR     PRBYTE          ; Output it in hex format.
         LDA     #$3A            ; ":".
-        JSR     ECHO            ; Output it.
+        JSR     CHROUT          ; Output it.
 
 PRDATA:
         LDA     #$20            ; Blank.
-        JSR     ECHO            ; Output it.
+        JSR     CHROUT          ; Output it.
         LDA     (XAML,X)        ; Get data byte at 'examine index'.
         JSR     PRBYTE          ; Output it in hex format.
 XAMNEXT:
@@ -164,14 +162,17 @@ PRBYTE:
         LSR
         JSR     PRHEX           ; Output hex digit.
         PLA                     ; Restore A.
-
 PRHEX:
         AND     #$0F            ; Mask LSD for hex print.
         ORA     #$30            ; Add "0".
         CMP     #$3A            ; Digit?
         BCC     ECHO            ; Yes, output it.
         ADC     #$06            ; Add offset for letter.
-
 ECHO:
+        JMP     CHROUT
+
+SEND_NEWLINE:
+        LDA     #$0D
         JSR     CHROUT
-        RTS
+        LDA     #$0A
+        JMP     CHROUT
