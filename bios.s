@@ -6,12 +6,24 @@ ACIA_STATUS = $5001
 ACIA_CMD    = $5002
 ACIA_CTRL   = $5003
 
+        jmp COLD_START
+
+LOAD:
+        rts
+
+SAVE:
+        rts
+
+ISCNTC:
+        rts
+        
         ;; Input a character from the serial interface.
         ;; On return, carry flag indicates whether a key was pressed.
         ;; If a key was pressed, the key value will be in the A register.
         ;;
         ;; Modifies: flags, A
 
+MONRDKEY:       
 CHRIN:
         lda     ACIA_STATUS
         and     #$08
@@ -24,6 +36,7 @@ CHRIN:
         clc
         rts
         
+MONCOUT:        
 CHROUT:
         pha
         sta     ACIA_DATA
@@ -43,7 +56,7 @@ RESET:
         sta     ACIA_CMD
         jmp     WOZMON
 
-        .segment "VECTORS"
+        .segment "RESETVEC"
         
         .word   $0F00           ; NMI vector
         .word   RESET           ; RESET vector
