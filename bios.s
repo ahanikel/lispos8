@@ -46,7 +46,82 @@ CHROUT:
         bne     @txdelay
         pla
         rts
-        
+
+PRINT_NEWLINE:
+TERPRI: 
+        LDA     #$0D
+        JSR     CHROUT
+        LDA     #$0A
+        JMP     CHROUT
+
+PRINT_GREETING:
+        JSR     PRINT_NEWLINE
+        LDX     #$00
+PRINT_GREETING_LOOP:
+        LDA     GREETING,X
+        BEQ     PRINT_GREETING_DONE
+        JSR     CHROUT
+        INX
+        BRA     PRINT_GREETING_LOOP
+PRINT_GREETING_DONE:
+        JSR     PRINT_NEWLINE
+        RTS
+
+        ;; Initialize the circular input buffer
+        ;; Modifies: flags, A
+INIT_BUFFER:
+        lda     READ_PTR
+        sta     WRITE_PTR
+        lda     DDRA
+        ora     #CTS            ; set CTS bit to output
+        sta     DDRA
+        lda     PORTA
+        and     #~CTS           ; we're clear to send
+        sta     PORTA
+        rts
+
+        ;; Write a character from the A register to the circular buffer
+        ;; Modifies: flags, X
+WRITE_BUFFER:
+        ldx     WRITE_PTR
+        sta     INPUT_BUFFER,x
+        inc     WRITE_PTR
+        rts
+
+        ;; Read a character from the circular buffer, put in A
+        ;; Modifies: flags, A, X
+READ_BUFFER:
+        ldx     READ_PTR
+        lda     INPUT_BUFFER,x
+        inc     READ_PTR
+        rts
+
+        ;; Return in A the number of unread bytes in the circular buffer
+        ;; Modifies: flags, A
+BUFFER_SIZE:
+        lda     WRITE_PTR
+        sec
+        sbc     READ_PTR
+        rts
+
+IRQ_HANDLER:
+        pha
+        phx
+        lda     ACIA_STATUS
+        ;; for now assume the only source of interrupts is incoming data
+        lda     ACIA_DATA
+        jsr     WRITE_BUFFER
+        jsr     BUFFER_SIZE
+        cmp     #$F0
+        bcc     @not_full
+        lda     PORTA
+        ora     #CTS
+        sta     PORTA
+@not_full:
+        plx
+        pla
+        rti
+
 RESET:
         cld
         cli
