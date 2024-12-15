@@ -1,7 +1,7 @@
         .setcpu "65C02"
         .debuginfo
 
-        TYPE_LIST := 0
+        TYPE_CONS := 99
         TYPE_VECT := 1
         TYPE_STRG := 2
         TYPE_SYMB := 3
@@ -16,10 +16,12 @@
 
         .zeropage
         .org $90
-PRINT_VECTOR:   .res 2
-PAREN_LEVEL: .res 1
-HEAP_PTR:  .res 2
-OBJECT_PTR:      .res 2
+PRINT_VECTOR:   .res 2          ; $90
+PAREN_LEVEL: .res 1             ; $92
+NIL:    .byte 0                 ; $93
+HEAP_PTR:  .res 2               ; $94
+OBJECT_PTR:      .res 2         ; $96
+ARGUMENTS:      .res 2          ; $98
 
         ;; .segment "HEAP"
         ;; .res     $3000
@@ -28,11 +30,18 @@ OBJECT_PTR:      .res 2
         .org $0400
 LISP:
         jsr PRINT_NEWLINE
-        lda #$00                ; initialise tree level
+        lda #$01                ; initialise tree level
         sta PAREN_LEVEL
+        lda #$00                ; initialise tree level
         sta HEAP_PTR            ; initialise heap pointer
+        sta ARGUMENTS           ; initialise argument stack
         lda #$10
         sta HEAP_PTR+1
+        lda #$0F
+        sta ARGUMENTS+1
+        lda #$00                ; initialise the top-level list
+        jsr store_and_inc_arguments
+        jsr store_and_inc_arguments
 read_next_char: 
         jsr wait_char
 read:   
@@ -43,15 +52,15 @@ read:
         cmp #')'
         beq end_list
         cmp #$0D
-        beq eval
-        ;; otherwise it's an atom
+        bne read_atom
+        jmp eval
 
 read_atom:
         tax
-        lda #<HEAP_PTR
-        pha
-        lda #>HEAP_PTR
-        pha
+        lda HEAP_PTR
+        jsr store_and_inc_arguments
+        lda HEAP_PTR+1
+        jsr store_and_inc_arguments
         lda #TYPE_SYMB
         jsr store_and_inc_heap_ptr
         txa
@@ -64,47 +73,62 @@ read_atom_done:
         tax
         lda #$00
         jsr store_and_inc_heap_ptr
-        ;; Add this atom to the parent list.
-        ;; If there is none, continue reading
-        ;; TODO...
         txa
-        jmp $FF00
         bra read
 
 read_list:
-        clv
         inc PAREN_LEVEL
-        bvs err_list_overflow
-        jsr make_cons
-        bra read
+        bne read_list_1
+        jmp err_list_overflow
+read_list_1:    
+        lda #$00
+        jsr store_and_inc_arguments
+        jsr store_and_inc_arguments
+        bra read_next_char
 
 end_list:
-        clv
         dec PAREN_LEVEL
-        bvs err_list_overflow
-        beq read                ; top level, continue reading
-        pla
-        sta OBJECT_PTR
-        pla
-        sta OBJECT_PTR+1
-        ;; store this list in the parent list
-        ;; if there is no parent, throw a should-not-happen error
-        ;; TODO...
-        bra read
+        bne end_list_loop
+        jmp err_list_underflow
+        lda #$00
+        jsr store_and_inc_arguments
+        jsr store_and_inc_arguments
+end_list_loop:  
+        jsr make_cons
+        bcc end_list_loop
+        jmp read_next_char
         
 store_and_inc_heap_ptr:
         sta (HEAP_PTR)
-        clc
+inc_heap_ptr:   
         inc HEAP_PTR
-        bcc store_and_inc_heap_ptr_done
+        bne store_and_inc_heap_ptr_done
+        inc HEAP_PTR+1
         lda HEAP_PTR+1
-        adc #$00
         cmp #$3F
         bpl err_nomem
 store_and_inc_heap_ptr_done:
         rts
+
+store_and_inc_arguments:
+        sta (ARGUMENTS)
+inc_arguments:   
+        inc ARGUMENTS
+        bne store_and_inc_arguments_done
+        jmp err_list_overflow
+store_and_inc_arguments_done:
+        rts
         
-        
+read_and_dec_arguments:
+        dec ARGUMENTS
+        lda ARGUMENTS
+        cmp #$FF
+        bne read_and_dec_arguments_done
+        jmp $FF00               ; internal error, wozmon
+read_and_dec_arguments_done:
+        lda (ARGUMENTS)
+        rts
+
         ;; Returns with zero flag clear if A is an atom character
         ;; Returns with zero flag set if A is NUL, SPC, TAB, RET, '(' or ')'
 is_atom_char:
@@ -125,9 +149,10 @@ eval:
         jsr PRINT_NEWLINE
         jsr PRINT_NEWLINE
         lda PAREN_LEVEL
+        cmp #$01
+        beq print_nil
         bmi err_too_many_closed_parens
-        bne err_unclosed_paren
-        bra print_nil
+        bra err_unclosed_paren
 
 print:
         jsr PRINT_NEWLINE
@@ -141,7 +166,7 @@ print_loop:
 print_done:
         jsr PRINT_NEWLINE
         jmp $FF00
-        jmp read
+        jmp read_next_char
 
 err_unclosed_paren:
         lda #<msg_unclosed_paren
@@ -161,6 +186,13 @@ err_list_overflow:
         lda #<msg_list_overflow
         sta PRINT_VECTOR
         lda #>msg_list_overflow
+        sta PRINT_VECTOR+1
+        bra exception
+
+err_list_underflow:
+        lda #<msg_list_underflow
+        sta PRINT_VECTOR
+        lda #>msg_list_underflow
         sta PRINT_VECTOR+1
         bra exception
 
@@ -190,18 +222,46 @@ msg_too_many_closed_parens:     .asciiz "? Too many closed parentheses"
 msg_unclosed_paren:     .asciiz "? Unclosed parentheses"
 msg_nil:         .asciiz "NIL"
 msg_list_overflow:      .asciiz "? List overflow"
+msg_list_underflow:      .asciiz "? List underflow"
 msg_nomem:      .asciiz "? Out of memory"
         
 make_cons:
-        lda #<HEAP_PTR
-        pha
-        lda #>HEAP_PTR
-        pha
-        lda #TYPE_LIST
+        lda HEAP_PTR
+        sta OBJECT_PTR
+        lda HEAP_PTR+1
+        sta OBJECT_PTR+1
+        lda #TYPE_CONS
         jsr store_and_inc_heap_ptr
-        pla
-        jsr store_and_inc_heap_ptr
-        pla
-        jsr store_and_inc_heap_ptr
-make_cons_done: 
+        jsr inc_heap_ptr
+        jsr inc_heap_ptr
+        jsr inc_heap_ptr
+        jsr inc_heap_ptr
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS
+        ldy #$00
+        lda (ARGUMENTS),y
+        sta (OBJECT_PTR),y
+        beq make_cons_1
+        clc
+make_cons_1:    
+        ldy #$01
+        lda (ARGUMENTS),y
+        sta (OBJECT_PTR),y
+        bcc make_cons_2
+        beq make_cons_2
+        clc                     ; Returns C=1 if CDR is $0000
+make_cons_2:    
+        ldy #$02
+        lda (ARGUMENTS),y
+        sta (OBJECT_PTR),y
+        ldy #$03
+        lda (ARGUMENTS),y
+        sta (OBJECT_PTR),y
+        lda OBJECT_PTR
+        jsr store_and_inc_arguments
+        lda OBJECT_PTR+1
+        jsr store_and_inc_arguments
+        jmp $FF00
         rts
