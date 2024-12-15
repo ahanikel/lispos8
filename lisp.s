@@ -1,7 +1,7 @@
         .setcpu "65C02"
         .debuginfo
 
-        TYPE_CONS := 99
+        TYPE_CONS := $99
         TYPE_VECT := 1
         TYPE_STRG := 2
         TYPE_SYMB := 3
@@ -88,8 +88,9 @@ read_list_1:
 
 end_list:
         dec PAREN_LEVEL
-        bne end_list_loop
+        bne end_list_1
         jmp err_list_underflow
+end_list_1:     
         lda #$00
         jsr store_and_inc_arguments
         jsr store_and_inc_arguments
@@ -101,10 +102,12 @@ end_list_loop:
 store_and_inc_heap_ptr:
         sta (HEAP_PTR)
 inc_heap_ptr:   
-        inc HEAP_PTR
-        bne store_and_inc_heap_ptr_done
+        clc
+        lda HEAP_PTR
+        adc #$01
+        sta HEAP_PTR
+        bcc store_and_inc_heap_ptr_done
         inc HEAP_PTR+1
-        lda HEAP_PTR+1
         cmp #$3F
         bpl err_nomem
 store_and_inc_heap_ptr_done:
@@ -226,7 +229,33 @@ msg_list_underflow:      .asciiz "? List underflow"
 msg_nomem:      .asciiz "? Out of memory"
         
 make_cons:
-        lda HEAP_PTR
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS
+        lda (ARGUMENTS)         ; argptr 0/1 becomes the car
+        beq make_cons_1         ; argptr 2/3 becomes the cdr
+        clc
+make_cons_1:    
+        ldy #$01
+        lda (ARGUMENTS),y
+        bcc make_cons_2
+        beq make_cons_2
+        clc                     ; Returns C=1 if CAR is $0000
+make_cons_2:    
+        bcc make_cons_car_is_nonzero
+
+        ldy #$02                ; car is zero, we're done, return last cons
+        lda (ARGUMENTS),y
+        jsr store_and_inc_arguments
+        lda (ARGUMENTS),y
+        jsr store_and_inc_arguments
+        rts
+        
+make_cons_car_is_nonzero:       
+        ;; we could use the HEAP_PTR directly and increase it at the end
+        ;; but that would be unsafe
+        lda HEAP_PTR            ; allocate new cons
         sta OBJECT_PTR
         lda HEAP_PTR+1
         sta OBJECT_PTR+1
@@ -236,32 +265,31 @@ make_cons:
         jsr inc_heap_ptr
         jsr inc_heap_ptr
         jsr inc_heap_ptr
-        lda ARGUMENTS
-        sec
-        sbc #$04
-        sta ARGUMENTS
-        ldy #$00
-        lda (ARGUMENTS),y
-        sta (OBJECT_PTR),y
-        beq make_cons_1
-        clc
-make_cons_1:    
+
+        bcc make_cons_car_is_nonzero_1
+        inc OBJECT_PTR+1
+make_cons_car_is_nonzero_1:     
+        inc OBJECT_PTR
+
+        lda (ARGUMENTS)
+        sta (OBJECT_PTR)
         ldy #$01
         lda (ARGUMENTS),y
         sta (OBJECT_PTR),y
-        bcc make_cons_2
-        beq make_cons_2
-        clc                     ; Returns C=1 if CDR is $0000
-make_cons_2:    
-        ldy #$02
+        iny
         lda (ARGUMENTS),y
         sta (OBJECT_PTR),y
-        ldy #$03
+        iny
         lda (ARGUMENTS),y
         sta (OBJECT_PTR),y
+
+        bcc make_cons_car_is_nonzero_2
+        dec OBJECT_PTR+1
+make_cons_car_is_nonzero_2:     
+        dec OBJECT_PTR
+
         lda OBJECT_PTR
         jsr store_and_inc_arguments
         lda OBJECT_PTR+1
         jsr store_and_inc_arguments
-        jmp $FF00
         rts
