@@ -1,4 +1,13 @@
         .setcpu "65C02"
+        .debuginfo
+
+        .zeropage
+READ_PTR:       .res 1
+WRITE_PTR:      .res 1
+
+        .segment "INPUT_BUFFER"
+INPUT_BUFFER:   .res $100
+
         .segment "BIOS"
 
 ACIA_DATA   = $5000
@@ -6,7 +15,15 @@ ACIA_STATUS = $5001
 ACIA_CMD    = $5002
 ACIA_CTRL   = $5003
 
-        jmp COLD_START
+PORTA       = $6001
+PORTB       = $6000
+DDRA        = $6003
+DDRB        = $6002
+
+E   = %01000000
+RW  = %00100000
+RS  = %00010000
+CTS = %00000001
 
 LOAD:
         rts
@@ -14,29 +31,36 @@ LOAD:
 SAVE:
         rts
 
-ISCNTC:
-        rts
-        
         ;; Input a character from the serial interface.
         ;; On return, carry flag indicates whether a key was pressed.
         ;; If a key was pressed, the key value will be in the A register.
         ;;
         ;; Modifies: flags, A
 
-MONRDKEY:       
+MONRDKEY:
 CHRIN:
-        lda     ACIA_STATUS
-        and     #$08
+        jsr     BUFFER_SIZE
         beq     @no_keypressed
-        lda     ACIA_DATA
-        jsr     CHROUT          ; echo
+        phx
+        jsr     READ_BUFFER
+        jsr     CHROUT
+        pha
+        jsr     BUFFER_SIZE
+        cmp     #$B0
+        bcs     @mostly_full
+        lda     PORTA
+        and     #~CTS
+        sta     PORTA
+@mostly_full:
+        pla
+        plx
         sec
         rts
 @no_keypressed:
         clc
         rts
-        
-MONCOUT:        
+
+MONCOUT:
 CHROUT:
         pha
         sta     ACIA_DATA
@@ -124,17 +148,24 @@ IRQ_HANDLER:
 
 RESET:
         cld
+        jsr     INIT_BUFFER
         cli
         lda     #$1F            ; 8-N-1, 19200 baud.
         sta     ACIA_CTRL
-        lda     #$0B            ; No parity, no echo, no interrupts.
+        lda     #$89            ; No parity, no echo, rx interrupts.
         sta     ACIA_CMD
+
+        jsr     LCDINIT
+        jsr     PRINT_GREETING
         jmp     WOZMON
 
+GREETING:       .asciiz "Starting Wozmon..."
+
         .segment "RESETVEC"
-        
+
         .word   $0F00           ; NMI vector
         .word   RESET           ; RESET vector
-        .word   $0000           ; IRQ vector
+        .word   IRQ_HANDLER     ; IRQ vector
 
         .include "wozmon.s"
+        .include "lcd.s"
