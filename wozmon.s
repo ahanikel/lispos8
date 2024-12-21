@@ -29,7 +29,7 @@ ESCAPE:
         JSR     CHROUT          ; Output it.
 
 GETLINE:
-        JSR     SEND_NEWLINE
+        JSR     PRINT_NEWLINE
 
         LDY     #$01            ; Initialize text index.
 BACKSPACE:
@@ -40,7 +40,6 @@ NEXTCHAR:
         JSR     CHRIN           ; Load character. Bit 7 will be '0'.
         BCC     NEXTCHAR        ; Loop until character received.
         STA     IN,Y            ; Add to text buffer.
-        JSR     CHROUT          ; Display character.
         CMP     #$0D            ; CR?
         BNE     NOTCR           ; No.
 
@@ -124,7 +123,7 @@ SETADR:
 
 NXTPRNT:
         BNE     PRDATA          ; NE means no address to print.
-        JSR     SEND_NEWLINE
+        JSR     PRINT_NEWLINE
         LDA     XAMH            ; 'Examine index' high-order byte.
         JSR     PRBYTE          ; Output it in hex format.
         LDA     XAML            ; 'Examine index' low-order byte.
@@ -169,10 +168,4 @@ PRHEX:
         BCC     ECHO            ; Yes, output it.
         ADC     #$06            ; Add offset for letter.
 ECHO:
-        JMP     CHROUT
-
-SEND_NEWLINE:
-        LDA     #$0D
-        JSR     CHROUT
-        LDA     #$0A
         JMP     CHROUT
