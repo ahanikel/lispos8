@@ -71,9 +71,6 @@ LCDINIT:
         jsr lcd_instruction
         rts
 
-LCDCMD:
-        jsr GETBYT
-        txa
 lcd_instruction:
         jsr lcd_wait
         pha
@@ -93,24 +90,6 @@ lcd_instruction:
         sta PORTB
         eor #E
         sta PORTB
-        rts
-
-LCDPRINT:
-        jsr FRMEVL
-        bit VALTYP
-        bmi lcd_print
-        jsr FOUT
-        jsr STRLIT
-lcd_print:      
-        jsr FREFAC
-        tax                     ; the length is in A, transfer to X
-        ldy #$00
-lcd_print_loop:
-        lda (INDEX),y
-        jsr lcd_print_char
-        iny
-        dex
-        bne lcd_print_loop
         rts
 
 lcd_print_char:

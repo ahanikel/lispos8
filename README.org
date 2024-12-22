@@ -1,1 +1,23 @@
 * A Lisp for Ben Eater's 6502 computer
+
+** Current status
+Right now this lisp implementation does very little to deserve its name:
+
+It reads and interns symbols and stores lists of symbols
+in the heap (which is not a heap yet, just some allocated
+memory which is never garbage-collected).
+
+Evaluation always returns NIL.
+
+** Building
+Run
+  make
+
+The image suitable for burning an EEPROM ends up in `build/lispos8.bin`.
+
+** Developing
+For a quicker turnaround you can copy-and-paste `build/lisp.woz`
+into your serial console while WozMon is running (that should be
+the case after a reset). Then you can start lisp using
+
+  0400R

@@ -12,25 +12,3 @@
                      (format t " ~2,'0x" b))
                  (incf addr)))
       (terpri))))
-
-(defun compile-asm (file)
-  (let* ((base    (subseq file 0 (position #\. file :from-end t)))
-         (infile  (format nil "~a.o" base))
-         (outfile (format nil "~a.bin" base)))
-    (list
-     (uiop:run-program
-      `("/opt/homebrew/bin/ca65"
-        ,file)
-      :output :string :error-output :output)
-     (uiop:run-program
-      `("/opt/homebrew/bin/ld65"
-        "-C" "plain.cfg"
-        "-o" ,outfile
-        ,infile)
-      :output :string
-      :error-output :output)
-     (uiop:run-program
-      `("find" "." "-name" "lisp.*" "-ls")
-      :output :string))))
-
-(progn (compile-asm "lisp.s") (to-wozmon "lisp.bin"))

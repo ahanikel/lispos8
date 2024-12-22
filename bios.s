@@ -49,7 +49,7 @@ CHRIN:
         cmp     #$B0
         bcs     @mostly_full
         lda     PORTA
-        and     #~CTS
+        and     #<~CTS
         sta     PORTA
 @mostly_full:
         pla
@@ -100,7 +100,7 @@ INIT_BUFFER:
         ora     #CTS            ; set CTS bit to output
         sta     DDRA
         lda     PORTA
-        and     #~CTS           ; we're clear to send
+        and     #<~CTS          ; we're clear to send
         sta     PORTA
         rts
 
@@ -166,6 +166,3 @@ GREETING:       .asciiz "Starting Wozmon..."
         .word   $0F00           ; NMI vector
         .word   RESET           ; RESET vector
         .word   IRQ_HANDLER     ; IRQ vector
-
-        .include "wozmon.s"
-        .include "lcd.s"

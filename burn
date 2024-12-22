@@ -1,1 +1,1 @@
-minipro -p AT28C256 -w tmp/eater.bin
+minipro -p AT28C256 -w build/lispos8.bin

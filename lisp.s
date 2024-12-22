@@ -10,10 +10,6 @@
         TYPE_FLOT := 6
         TYPE_FUNC := 7
 
-        CHRIN := $A1DB
-        CHROUT := $A1FD
-        PRINT_NEWLINE := $A208
-
         .zeropage
         .org $90
 PRINT_VECTOR:   .res 2          ; $90
@@ -26,8 +22,8 @@ ARGUMENTS:      .res 2          ; $98
         ;; .segment "HEAP"
         ;; .res     $3000
         
-        .segment "CODE"
-        .org $0400
+        .segment "LISP"
+        .org $E000
 LISP:
         jsr PRINT_NEWLINE
         lda #$01                ; initialise tree level
@@ -127,7 +123,7 @@ read_and_dec_arguments:
         lda ARGUMENTS
         cmp #$FF
         bne read_and_dec_arguments_done
-        jmp $FF00               ; internal error, wozmon
+        jmp WOZMON              ; internal error, wozmon
 read_and_dec_arguments_done:
         lda (ARGUMENTS)
         rts
@@ -168,7 +164,7 @@ print_loop:
         bra print_loop
 print_done:
         jsr PRINT_NEWLINE
-        jmp $FF00
+        jmp WOZMON
         jmp read_next_char
 
 err_unclosed_paren:
