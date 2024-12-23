@@ -147,6 +147,9 @@ IRQ_HANDLER:
         rti
 
 RESET:
+        sei
+        ldx     #$FF
+        txs
         cld
         jsr     INIT_BUFFER
         cli
