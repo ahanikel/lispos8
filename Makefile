@@ -18,7 +18,7 @@ $(OUTDIR)/lispos8.o: bios.s wozmon.s lcd.s lisp.s | $(OUTDIR)
 	cat $^ > $(OUTDIR)/lispos8.s
 	ca65 -o $@ $(OUTDIR)/lispos8.s
 
-SYMDEFS = $(shell awk '/(CHRIN|CHROUT|WOZMON|PRINT_NEWLINE)/ { print "-D" substr($$3,2) "=\\$$" substr($$2, 3) }' < $(OUTDIR)/lispos8.lbl)
+SYMDEFS = $(shell awk '/(CHRIN|CHROUT|WOZMON|PRINT_NEWLINE|PRBYTE)/ { print "-D" substr($$3,2) "=\\$$" substr($$2, 3) }' < $(OUTDIR)/lispos8.lbl)
 
 $(OUTDIR)/lisp.o: lisp.s $(OUTDIR)/lispos8.bin | $(OUTDIR)
 	sed -e '/.org $$E000/s//.org $$0400/' $< > $(OUTDIR)/$<
