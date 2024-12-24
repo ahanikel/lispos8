@@ -214,6 +214,18 @@ eval_1:
         sta PRINT_VECTOR+1
         inc ARGUMENTS
         inc ARGUMENTS
+        ora PRINT_VECTOR
+        bne eval_non_nil
+        ;; nil (00 00) is special: it points to addr $0000
+        ;; which should contain the symbol NIL
+        ;; (03 4E 49 4C 00)
+        ;; but we don't want to change anything there
+eval_nil:
+        lda #<atom_nil
+        sta PRINT_VECTOR
+        lda #>atom_nil
+        sta PRINT_VECTOR+1
+eval_non_nil:
         lda (PRINT_VECTOR)
         cmp #TYPE_SYMB
         beq eval_atom           ; evaluates to itself for now
@@ -236,23 +248,20 @@ print:
         sta PRINT_VECTOR+1
         inc ARGUMENTS
         inc ARGUMENTS
-        lda (PRINT_VECTOR)
-        cmp #TYPE_SYMB
-        beq print_atom
-        cmp #TYPE_CONS
-        beq print_cons
-        ora (PRINT_VECTOR),y
-        beq print_nil
-        jmp print_non_printable
-
+        ora PRINT_VECTOR
+        bne print_non_nil
 print_nil:
         lda #<atom_nil
         sta PRINT_VECTOR
         lda #>atom_nil
         sta PRINT_VECTOR+1
-        jsr PRINT_NEWLINE
-        jsr print_cstring
-        jmp read_next_char
+print_non_nil:
+        lda (PRINT_VECTOR)
+        cmp #TYPE_SYMB
+        beq print_atom
+        cmp #TYPE_CONS
+        beq print_cons
+        jmp print_non_printable
 
 print_cons:
         bra print_non_printable
@@ -336,9 +345,7 @@ wait_char:
         bcc wait_char
         cmp #$04                ; CTRL-D
         bne wait_char_end
-        ldx #$FF
-        txs
-        jmp WOZMON
+        jmp cf_quit+1
 wait_char_end:
         rts
 
@@ -353,7 +360,6 @@ make_cons:
 make_cons_1:
         ldy #$01
         lda (ARGUMENTS),y
-        bcc make_cons_2
         beq make_cons_2
         clc                     ; Returns C=1 if CAR is $0000
 make_cons_2:
@@ -396,9 +402,7 @@ make_cons_car_is_nonzero_store_args:
 
 cf_quit:
         .byte TYPE_FCOM
-        tsx
-        inx
-        inx
+        ldx #$FF
         txs
         jmp WOZMON
 
