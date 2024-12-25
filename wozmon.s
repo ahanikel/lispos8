@@ -1,3 +1,4 @@
+        ;; This file was taken from Ben Eater's videos
         .setcpu "65C02"
 
 XAML  = $24             ; Last "opened" location Low

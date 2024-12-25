@@ -1,3 +1,4 @@
+        ;; This file was taken from Ben Eater's videos
         .segment "BIOS"
 
 lcd_wait:
