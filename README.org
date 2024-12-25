@@ -7,17 +7,17 @@ It reads and interns symbols and stores lists of symbols
 in the heap (which is not a heap yet, just some allocated
 memory which is never garbage-collected).
 
-Evaluation always returns NIL.
+Evaluation always returns ~NIL~.
 
 ** Building
 Run
-  make
+: make
 
-The image suitable for burning an EEPROM ends up in `build/lispos8.bin`.
+The image suitable for burning an EEPROM ends up in =build/lispos8.bin=.
 
 ** Developing
-For a quicker turnaround you can copy-and-paste `build/lisp.woz`
-into your serial console while WozMon is running (that should be
+For a quicker turnaround you can copy-and-paste =build/lisp.woz=
+into your serial console while /Wozmon/ is running (that should be
 the case after a reset). Then you can start lisp using
 
-  0400R
+: 0400R
