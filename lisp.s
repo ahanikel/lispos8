@@ -13,13 +13,14 @@
 
         .zeropage
         .org $90
-PRINT_VECTOR: .res 2            ; $90
-PAREN_LEVEL:  .res 1            ; $92
-              .res 1            ; $93
-HEAP_PTR:     .res 2            ; $94
-OBJECT_PTR:   .res 2            ; $96
-ARGUMENTS:    .res 2            ; $98
-INTERNED:     .res 2            ; $9A
+PRINT_VECTOR:     .res 2            ; $90
+PAREN_LEVEL:      .res 1            ; $92
+                  .res 1            ; $93
+HEAP_PTR:         .res 2            ; $94
+OBJECT_PTR_ONE:   .res 2            ; $96
+OBJECT_PTR_TWO:   .res 2            ; $98
+ARGUMENTS:        .res 2            ; $9A
+INTERNED:         .res 2            ; $9C
 
         .segment "LISP"
         .org $E000
@@ -136,28 +137,28 @@ inc_heap_ptr_by:
         rts
 
         ;; Write a byte from the A register to the object
-        ;; and increase the OBJECT_PTR.
+        ;; and increase the OBJECT_PTR_ONE.
         ;; The object must have been allocated already.
         ;; Returns C=1 if a page boundary was crossed.
         ;; Modifies: flags, A
 store_and_inc_object_ptr:
-        sta (OBJECT_PTR)
+        sta (OBJECT_PTR_ONE)
 inc_object_ptr:
         clc
-        lda OBJECT_PTR
+        lda OBJECT_PTR_ONE
         adc #$01
-        sta OBJECT_PTR
+        sta OBJECT_PTR_ONE
         bcc store_and_inc_object_ptr_done
-        inc OBJECT_PTR+1
+        inc OBJECT_PTR_ONE+1
 store_and_inc_object_ptr_done:
         rts
 
 dec_object_ptr:
-        dec OBJECT_PTR
-        lda OBJECT_PTR
+        dec OBJECT_PTR_ONE
+        lda OBJECT_PTR_ONE
         cmp #$FF
         bne dec_object_ptr_done
-        dec OBJECT_PTR+1
+        dec OBJECT_PTR_ONE+1
 dec_object_ptr_done:
         rts
 
@@ -236,6 +237,9 @@ eval_non_nil:
 eval_atom:
         jmp print
 eval_cons:
+        jsr dup_arg
+        jsr cf_car+1
+
         jmp print
 
 print:
@@ -293,9 +297,9 @@ print_non_printable:
         sta PRINT_VECTOR+1
         jsr PRINT_NEWLINE
         jsr print_cstring
-        lda OBJECT_PTR+1
+        lda OBJECT_PTR_ONE+1
         jsr PRBYTE
-        lda OBJECT_PTR
+        lda OBJECT_PTR_ONE
         jsr PRBYTE
         lda #'>'
         jsr CHROUT
@@ -340,6 +344,13 @@ exception:
         jsr print_cstring
         jmp read_next_char
 
+msg_too_many_closed_parens: .asciiz "? Too many closed parentheses"
+msg_unclosed_paren:         .asciiz "? Unclosed parentheses"
+msg_list_overflow:          .asciiz "? List overflow"
+msg_list_underflow:         .asciiz "? List underflow"
+msg_nomem:                  .asciiz "? Out of memory"
+msg_non_printable:          .asciiz "<Non-printable object at $"
+
 wait_char:
         jsr CHRIN
         bcc wait_char
@@ -376,9 +387,9 @@ make_cons_car_is_nonzero:
         ;; we could use the HEAP_PTR directly and increase it at the end
         ;; but that would be unsafe
         lda HEAP_PTR            ; allocate new cons
-        sta OBJECT_PTR
+        sta OBJECT_PTR_ONE
         lda HEAP_PTR+1
-        sta OBJECT_PTR+1
+        sta OBJECT_PTR_ONE+1
         lda #TYPE_CONS
         jsr store_and_inc_heap_ptr
         ldy #$04
@@ -389,14 +400,14 @@ make_cons_car_is_nonzero:
 make_cons_car_is_nonzero_store_args:
         dey
         lda (ARGUMENTS),y
-        sta (OBJECT_PTR),y
+        sta (OBJECT_PTR_ONE),y
         cpy #$00
         bne make_cons_car_is_nonzero_store_args
         jsr dec_object_ptr
 
-        lda OBJECT_PTR
+        lda OBJECT_PTR_ONE
         jsr store_and_inc_arguments
-        lda OBJECT_PTR+1
+        lda OBJECT_PTR_ONE+1
         jsr store_and_inc_arguments
         rts
 
@@ -406,24 +417,261 @@ cf_quit:
         txs
         jmp WOZMON
 
+        ;; (assoc item alist)
 cf_assoc:
         .byte TYPE_FCOM
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS
         rts
 
-msg_too_many_closed_parens: .asciiz "? Too many closed parentheses"
-msg_unclosed_paren:         .asciiz "? Unclosed parentheses"
-msg_list_overflow:          .asciiz "? List overflow"
-msg_list_underflow:         .asciiz "? List underflow"
-msg_nomem:                  .asciiz "? Out of memory"
-msg_non_printable:          .asciiz "<Non-printable object at $"
+        ;; Compare two values for identity (used internally)
+        ;; Expects the object pointer to point to where the
+        ;; two arguments are
+eq:
+        ldy #$02
+        lda (OBJECT_PTR_ONE)
+        cmp (OBJECT_PTR_ONE),y
+        bne eq_done
+        ldy #$01
+        lda (OBJECT_PTR_ONE),y
+        ldy #$03
+        cmp (OBJECT_PTR_ONE),y
+eq_done:
+        rts
+
+cf_eq:
+        .byte TYPE_FCOM
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS           ; consume arguments
+        sta OBJECT_PTR_ONE
+        lda ARGUMENTS+1
+        sta OBJECT_PTR_ONE+1
+        jsr eq
+        beq cf_eq_return_t
+        jmp return_nil
+cf_eq_return_t:
+        jmp return_t
+
+cf_equalp:
+        .byte TYPE_FCOM
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta OBJECT_PTR_ONE
+        lda ARGUMENTS+1
+        sta OBJECT_PTR_ONE+1
+        jsr eq
+        bne cf_equalp_not_eq
+        jmp cf_equalp_return_t  ; objects are identical
+cf_equalp_not_eq:
+        lda (OBJECT_PTR_ONE)    ; OBJECT_PTR_ONE points to argument ptrs
+        pha
+        ldy #$01
+        lda (OBJECT_PTR_ONE),y
+        pha
+        ldy #$02
+        lda (OBJECT_PTR_ONE),y
+        pha
+        ldy #$03
+        lda (OBJECT_PTR_ONE),y
+        sta OBJECT_PTR_TWO+1
+        pla
+        sta OBJECT_PTR_TWO
+        pla
+        sta OBJECT_PTR_ONE+1
+        pla
+        sta OBJECT_PTR_ONE
+
+        lda (OBJECT_PTR_ONE)    ; OBJECT_PTR_ONE points to first value
+        cmp (OBJECT_PTR_TWO)
+        beq cf_equalp_same_type
+        jmp cf_equalp_return_nil ; different types, can't be equalp
+cf_equalp_same_type:
+        cmp #TYPE_SYMB
+        bne compare_cons
+compare_symb:
+        ldy #$01
+compare_symb_loop:
+        lda (OBJECT_PTR_ONE),y
+        cmp (OBJECT_PTR_TWO),y
+        beq cf_equalp_same_char
+        jmp cf_equalp_return_nil
+cf_equalp_same_char:
+        ora #$00
+        bne cf_equalp_symb_continue
+        jmp cf_equalp_return_t            ; we're done
+cf_equalp_symb_continue:
+        iny
+        jmp compare_symb_loop
+compare_cons:
+        cmp #TYPE_CONS
+        beq cf_equalp_is_a_cons
+        jmp cf_equalp_throw
+cf_equalp_is_a_cons:
+        lda OBJECT_PTR_ONE
+        jsr store_and_inc_arguments
+        lda OBJECT_PTR_ONE+1
+        jsr store_and_inc_arguments
+        lda OBJECT_PTR_TWO
+        jsr store_and_inc_arguments
+        lda OBJECT_PTR_TWO+1
+        jsr store_and_inc_arguments
+compare_cons_loop:
+        ldy #$01
+        lda (OBJECT_PTR_ONE)
+        ora (OBJECT_PTR_ONE),y    ; first arg is zero?
+        bne compare_cons_loop_continue ; no
+        ora (OBJECT_PTR_TWO)
+        ora (OBJECT_PTR_TWO),y
+        beq cf_equalp_dec4_return_t ; both args are zero, return true
+        bra cf_equalp_dec4_return_nil
+compare_cons_loop_continue:
+        lda (OBJECT_PTR_TWO)
+        ora (OBJECT_PTR_TWO),y
+        beq cf_equalp_dec4_return_nil ; first arg nonzero, second is zero
+        ;; both args are nonzero, push them to the argstack
+        lda (OBJECT_PTR_ONE)
+        jsr store_and_inc_arguments
+        lda (OBJECT_PTR_ONE),y
+        jsr store_and_inc_arguments
+        lda (OBJECT_PTR_TWO)
+        jsr store_and_inc_arguments
+        lda (OBJECT_PTR_TWO),y
+        jsr store_and_inc_arguments
+        jsr cf_equalp+1         ; and compare them
+        dec ARGUMENTS
+        dec ARGUMENTS
+        lda (ARGUMENTS)
+        ldy #$01
+        ora (ARGUMENTS),y       ; returned NIL, they're not equal
+        bne cf_equalp_dec4_return_nil
+        ;; increase both argument ptrs by one addr (word)
+        dec ARGUMENTS
+        dec ARGUMENTS
+        lda (ARGUMENTS)
+        inc
+        inc
+        sta (ARGUMENTS)
+        dec ARGUMENTS
+        dec ARGUMENTS
+        lda (ARGUMENTS)
+        inc
+        inc
+        sta (ARGUMENTS)
+        ;; and store them in the object ptrs
+        sta OBJECT_PTR_ONE
+        inc ARGUMENTS
+        lda (ARGUMENTS)
+        sta OBJECT_PTR_ONE+1
+        inc ARGUMENTS
+        lda (ARGUMENTS)
+        sta OBJECT_PTR_TWO
+        inc ARGUMENTS
+        lda (ARGUMENTS)
+        sta OBJECT_PTR_TWO+1
+        bra compare_cons_loop
+cf_equalp_dec4_return_nil:
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS
+cf_equalp_return_nil:
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS
+        jmp return_nil
+cf_equalp_dec4_return_t:
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS
+cf_equalp_return_t:
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS
+        jmp return_t
+cf_equalp_throw:
+        lda ARGUMENTS
+        sec
+        sbc #$04
+        sta ARGUMENTS
+        jsr PRINT_NEWLINE
+        lda #<msg_non_comparable
+        sta PRINT_VECTOR
+        lda #>msg_non_comparable
+        sta PRINT_VECTOR+1
+        jsr print_cstring
+        lda OBJECT_PTR_ONE+1
+        jsr PRBYTE
+        lda OBJECT_PTR_ONE
+        jsr PRBYTE
+        jmp read_next_char
+msg_non_comparable: .asciiz "? Unable to compare object at $"
+
+cf_null:
+        .byte TYPE_FCOM
+        dec ARGUMENTS
+        lda (ARGUMENTS)
+        dec ARGUMENTS
+        ora (ARGUMENTS)
+        beq return_t
+return_nil:
+        lda #$00
+        sta (ARGUMENTS)
+        inc ARGUMENTS
+        sta (ARGUMENTS)
+        inc ARGUMENTS
+        rts
+return_t:
+        lda #<atom_t
+        sta (ARGUMENTS)
+        inc ARGUMENTS
+        lda #>atom_t
+        sta (ARGUMENTS)
+        inc ARGUMENTS
+        rts
+
+cf_car:
+        .byte TYPE_FCOM
+        rts
 
 atom_nil:
         .byte TYPE_SYMB
         .asciiz "NIL"
 
+atom_t:
+        .byte TYPE_SYMB
+        .asciiz "T"
+
 atom_quit:
         .byte TYPE_SYMB
         .asciiz "QUIT"
+
+atom_eq:
+        .byte TYPE_SYMB
+        .asciiz "EQ"
+
+atom_equalp:
+        .byte TYPE_SYMB
+        .asciiz "EQUALP"
+
+atom_car:
+        .byte TYPE_SYMB
+        .asciiz "CAR"
+
+atom_cdr:
+        .byte TYPE_SYMB
+        .asciiz "CDR"
+
+atom_quote:
+        .byte TYPE_SYMB
+        .asciiz "QUOTE"
 
 function_table:
         .byte $99
